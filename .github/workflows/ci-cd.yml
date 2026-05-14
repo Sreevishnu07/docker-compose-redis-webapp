@@ -1,0 +1,111 @@
+name: Complete CI-CD pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check docker compose config
+        run: docker compose config
+
+      - name: Build multi-container infrastructure
+        run: docker compose build
+
+      - name: Start containers
+        run: docker compose up -d
+
+      - name: Wait for service initialization
+        run: sleep 20
+
+      - name: Validate Frontend Availability
+        run: |
+          for i in {1..5}; do
+            if curl -sf http://localhost:3000; then
+              echo "Frontend is reachable.."
+              exit 0
+            fi
+            echo "Retrying frontend connectivity..."
+            sleep 5
+          done
+          echo "Frontend validation failed"
+          exit 1
+
+      - name: Validate backend availability
+        run: |
+          for i in {1..5}; do
+            if curl -sf http://localhost:5000/api; then
+              echo "Backend is reachable.."
+              exit 0
+            fi
+            echo "Retrying backend connectivity.."
+            sleep 5
+          done
+          echo "Backend validation failed"
+          exit 1
+
+      - name: Check redis connectivity
+        run: |
+          for i in {1..5}; do
+            if docker exec redis redis-cli ping | grep PONG; then
+              echo "Redis connectivity verified.."
+              exit 0
+            fi
+            echo "Retrying redis connectivity.."
+            sleep 5
+          done
+          echo "Redis connectivity failed.."
+          exit 1
+
+      - name: Validate redis persistence
+        run: |
+          response1=$(curl -s http://localhost:5000/api)
+          response2=$(curl -s http://localhost:5000/api)
+
+          echo "$response1"
+          echo "$response2"
+
+      - name: Display Container Logs
+        if: always()
+        run: docker compose logs
+
+      - name: Stop Containers
+        if: always()
+        run: docker compose down
+
+  build-and-push:
+    needs: integration-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Dockerhub login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+        
+      - name: Build Frontend Image
+        run: |
+          docker build \
+          -t ${{ secrets.DOCKER_USERNAME }}/redis-frontend:latest ./frontend
+
+      - name: Build Backend Image
+        run: |
+          docker build \
+          -t ${{ secrets.DOCKER_USERNAME }}/redis-backend:latest ./backend
+
+      - name: Push Frontend Image
+        run: docker push  ${{ secrets.DOCKER_USERNAME }}/redis-frontend:latest
+
+      - name: Push Backend Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/redis-backend:latest
+        
+        
