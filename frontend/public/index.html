@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redis DevOps Demo</title>
+</head>
+<body>
+
+    <h1>Nginx Frontend Container</h1>
+
+    <button onclick="loadData()">
+        Call Backend
+    </button>
+
+    <pre id="output"></pre>
+
+    <script>
+
+        async function loadData() {
+
+            const response =
+                await fetch("http://localhost:5000/api");
+
+            const data = await response.json();
+
+            document.getElementById("output")
+                .innerText =
+                    JSON.stringify(data, null, 2);
+        }
+
+    </script>
+
+</body>
+</html>
